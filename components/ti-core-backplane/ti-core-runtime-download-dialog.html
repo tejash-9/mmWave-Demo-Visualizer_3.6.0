@@ -1,0 +1,168 @@
+<!--
+    Copyright (c) 2020 Texas Instruments Incorporated
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+    *   Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+    *   Neither the name of Texas Instruments Incorporated nor the names of
+    its contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+    CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+    EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+    PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+    OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+    OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+    EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../ti-widget-common/ti-widget-dialog.html">
+<link rel="import" href="../../components/paper-button/paper-button.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../ti-core-assets/ti-core-assets.html">
+
+<!--
+`ti-core-runtime-download-dialog` is used to help users install the TI Cloud Agent.
+
+@group Ti Elements
+@element ti-core-runtime-download-dialog
+@homepage elements/ti-guicomposer-helpindex/demo.html
+@demo demo.html
+-->
+<dom-module id='ti-core-runtime-download-dialog'  >
+
+    <template>
+        <ti-widget-dialog id="runtimeInstallDlg" heading="GC Runtime Installation Error" width="500px" is-modal with-backdrop hidden>
+            <div id="downloadRuntime" style="margin-bottom: 5px;" >
+                An error has occurred which indicates that the GUI Composer Runtime was not properly installed.<p/>
+                <template is="dom-if" if="[[_isValidRuntimeVersion(gcRuntimeVersion)]]">
+                    Please click the link below to download the Runtime installer, install the runtime and ensure that this
+                    application is located as a sub-folder of the installed runtime.
+                    <ul>
+                        <li><a href="https://software-dl.ti.com/ccs/non-esd/gui_composer/runtime/gcruntime-{{gcRuntimeVersion}}-{{installerFileName}}" target="_blank">Download GUI Composer Runtime Installer for [[os]]</a></li>
+                    </ul>
+                </template>
+                <template is="dom-if" if="[[!_isValidRuntimeVersion(gcRuntimeVersion)]]">
+                    Please re-install your application and, during the installation, ensure that the GUI Composer Runtime
+                    is installed and that the application is installed as a sub-folder of the installed runtime.
+                </template>
+            </div>
+            <div class="actionBar">
+                <paper-button dialog-dismiss >OK</paper-button>
+            </div>
+        </ti-widget-dialog>
+    </template>
+
+
+    <!-- ------------------------------------------------------------------------------------- -->
+    <script>
+        var gc = gc || {};
+
+        (function() {
+        Polymer ({
+            is: 'ti-core-runtime-download-dialog',
+            isWizardOpen: false,
+            /**
+             *
+             */
+            properties: {
+                /**
+                 * For desktop applications, the currently installed version
+                 * of the GUI Composer Runtime
+                 * @attribute gcRuntimeVersion
+                 * @type String (read-only)
+                 * @default latest
+                 */
+                gcRuntimeVersion: {
+                    type: String,
+                    readOnly: true,
+                    value: "unknown"
+                },
+                /**
+                 * For desktop applications, the name of the gc runtime installer .exe file
+                 * @attribute installerFileName
+                 * @type String (read-only)
+                 * @default windows-installer.exe
+                 */
+                installerFileName: {
+                    type: String,
+                    readOnly: true,
+                    value: "windows-installer.exe"
+                },
+                /**
+                 * For desktop applications, the name of the operating system
+                 * @attribute os
+                 * @type String (read-only)
+                 * @default Windows
+                 */
+                os: {
+                    type: String,
+                    readOnly: true,
+                    value: "Windows"
+                }
+            },
+            _isValidRuntimeVersion: function(version){
+                return (version && version !== 'unknown');
+            },
+            toggle: function() {
+                var dialog = this.$.runtimeInstallDlg;
+                this.isWizardOpen = !this.isWizardOpen;
+                if (this.isWizardOpen) {
+                    dialog.hidden = false;
+                }
+                dialog.toggle();
+                try {
+                    Polymer.updateStyles();
+                } catch(e){
+                }
+
+            },
+            open: function(){
+                if (!this.isWizardOpen){
+                    this.toggle();
+                }
+            },
+            close: function(){
+                if (this.isWizardOpen){
+                    this.toggle();
+                }
+            },
+            attached: function() {
+                this.async(() => {
+                    if (gc.desktop.isDesktop()) {
+                        if (navigator.appVersion.indexOf("Mac") !== -1) {
+                            this._setOs("OSX");
+                            this._setInstallerFileName("osx-installer.app.zip");
+                        }
+                        else if (navigator.appVersion.indexOf("Win") === -1) {
+                            this._setOs("Linux");
+                            this._setInstallerFileName("linux-x64-installer.run");
+                        }
+                        var self = this;
+                        gc.fileCache.readTextFile("version.xml").then(function(contents) {
+                            var versionStr = contents.substring(contents.indexOf("<version>")+"<version>".length);
+                            self._setGcRuntimeVersion(versionStr.substring(0,versionStr.indexOf("</version>")));
+                        }).fail(function(err) {
+                            self._setGcRuntimeVersion("unknown");
+                        });
+
+                    }
+                },1)
+            }
+
+        });
+        }());
+    </script>
+
+</dom-module>

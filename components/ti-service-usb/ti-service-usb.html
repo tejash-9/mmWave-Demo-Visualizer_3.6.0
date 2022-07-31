@@ -1,0 +1,873 @@
+<!--
+    Copyright (c) 2019, Texas Instruments Incorporated
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+    *   Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+    *   Neither the name of Texas Instruments Incorporated nor the names of
+    its contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+    CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+    EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+    PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+    OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+    OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+    EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../ti-core-backplane/ti-core-backplane.html">
+<link rel="import" href="../ti-core-assets/ti-core-assets.html">
+
+<!--
+`ti-service-usb` provides APIs for interacting with TI USB devices and USB hub devices using low-level USB APIs
+such as controlTransfer.  The service also supports USB-BULK data transfers.
+The vendorIdFilter allows you to filter the list of devices that is connected to the PC by vendor ID.
+For all TI devices, use an empty string as the vendorIdFilter.  For all USB Hubs and TI Devices, set vendorIdFilter to *.
+One or more specific vendor IDs can be used as a filter by setting vendorIdFilter to a comma-separated list of vendor ids.
+
+For a complete working demo of this service, please see the demo.html and demo.js files in the ti-service-usb folder.
+To run this demo, select Help / Components from the Designer's menu and run the demo for the ti-service-usb component.
+Clear the Vendor ID Filter box to configure the filter to show only TI Devices.  Click Connect to connect to the
+TI Cloud Agent. Then plug in e.g. an MSP432P401R launchpad. The interfaces for this device will be displayed as soon
+as you plug in the device.  You can then open this device, send controlTransfer commands to see e.g. the Manufacturer ID,
+claim interface 2 (the bulk interface for the device), release the interface and close the device.
+
+Example:
+
+    <head>
+        ...
+        <link rel="import" href="../polymer/polymer.html">
+        <link rel="import" href="../ti-service-usb/ti-service-usb.html">
+    </head>
+    <body>
+        ...
+        <ti-service-usb id="usbService"></ti-service-usb>
+         ...
+        <script>
+            ...
+            var serviceNew;
+            addEventListener('WebComponentsReady', function() {
+              serviceNew = gc.services['ti-service-usb'];
+            }
+        </script>
+    </body>
+
+@group Ti Elements
+@element ti-service-usb
+@demo demo.html
+@homepage ../ti-guicomposer-helpindex/demo.html
+-->
+
+<dom-module id='ti-service-usb'>
+    <template>
+        <style>
+            :host { display: none; }
+        </style>
+        <ti-core-backplane id=backplane></ti-core-backplane>
+
+    </template>
+    <script>
+        var gc = gc || {};
+        (function() {
+            var ServiceName = 'ti-service-usb';
+            Polymer({
+                is: 'ti-service-usb',
+                initComplete: false,
+                states: [
+                    {
+                        'name': 'disconnected',
+                        'statusString': '',
+                        'waitForUser': true,
+                        'caption': 'Connect',
+                        'skip': false,
+                        'events': {
+                            'gotoNextState': 'backplaneReady',
+                            'backplane_ready': 'backplaneReady',
+                            'backplane_connectionFailed': 'disconnected',
+                            'backplane_disconnected': 'disconnected'
+                        }
+                    },
+                    {
+                        'name': 'backplaneReady',
+                        'statusString': '',
+                        'waitForUser': false,
+                        'caption': 'Connected',
+                        'skip': false,
+                        'events': {
+                            'gotoNextState': 'findingDeviceInfoList',
+                            'backplane_disconnect': 'disconnected',
+                            'backplane_disconnected': 'disconnected',
+                            'backplane_downloadTICloudAgent': 'disconnected'
+
+                        }
+                    },
+                    {
+                        'name': 'findingDeviceInfoList',
+                        'statusString': 'Scanning for usb devices...',
+                        'waitForUser': false,
+                        'skip': false,
+                        'events': {
+                            'gotoNextState': 'usbDeviceListReady',
+                            'usbDeviceListUpdated': 'usbDeviceListReady',
+                            'backplane_connectionFailed': 'disconnect',
+                            'backplane_disconnect': 'disconnect',
+                            'backplane_disconnected': 'disconnect'
+                        }
+                    },
+                    {
+                        'name': 'usbDeviceListReady',
+                        'caption': 'Device list ready',
+                        'statusString': 'USB Device Ready to be opened',
+                        'waitForUser': true,
+                        'skip': false,
+                        'events': {
+                            'gotoNextState': 'usbDeviceListReady',
+                            'usbDeviceListUpdated': 'usbDeviceListReady',
+                            'backplane_connectionFailed': 'disconnect',
+                            'backplane_disconnect': 'disconnect',
+                            'backplane_disconnected': 'disconnect'
+                        }
+                    },
+                    {
+                        'name': 'disconnect',
+                        'statusString': 'Disconnect',
+                        'caption': 'Disconnect',
+                        'waitForUser': true,
+                        'skip': false,
+                        'events': {
+                            'gotoNextState': 'disconnected',
+                            'disconnectComplete': 'disconnected',
+                            'backplane_connectionFailed': 'disconnected',
+                            'backplane_disconnect': 'disconnected',
+                            'backplane_disconnected': 'disconnected'
+                        }
+                    }
+
+                ],
+                stateIndexes: {},
+                prevState: undefined,
+                wasUsbDeviceFound: false,
+                /**
+                 * Fired when a usb device has been plugged in or removed. Call the listDevices method to
+                 *  determine which devices are currently plugged in. In the event of an error, the event detail
+                 *  provides an error object that describes the error.
+                 *
+                 * @event usbDeviceListUpdated
+                 */
+                /**
+                 * Fired when the currentState changes.
+                 *
+                 * @event currentStateChanged
+                 */
+                /**
+                 * Fired when the isUsbListReady property value has changed
+                 *
+                 * @event usbListReadyChanged
+                 */
+                /**
+                 * Fired when a usb device has been opened. detail = key of opened device.
+                 *
+                 * @event usbDeviceOpened
+                 */
+                /**
+                 * Fired when a usb device has been closed. detail = key of closed device.
+                 *
+                 * @event usbDeviceClosed
+                 */
+                /**
+                 * Fired when the initial USB device enumeration is complete and the listDevices method can be called
+                 *
+                 * @event deviceInfoMapReady
+                 */
+                hostAttributes: {},
+
+                properties: {
+                    /**
+                     * ti-core-backplane to be used for connecting to TICloudAgent via agent.js
+                     *
+                     * @attribute backplane
+                     * @type Object
+                     * @default undefined
+                     */
+                    backplane: {
+                        notify: true,
+                        type: Object,
+                        value: undefined,
+                        observer: "_backplaneChanged"
+                    },
+                    /**
+                     * The current state of this object's internal state machine.
+                     *
+                     * @attribute currentState
+                     * @type string
+                     * @default undefined
+                     */
+                    currentState: {
+                        notify: true,
+                        type: String,
+                        value: undefined,
+                        observer: "_currentStateChanged"
+                    },
+                    /**
+                     * a string representing the current status of the interactions with the target device.
+                     *
+                     * @attribute status
+                     * @type string
+                     * @default ''
+                     */
+                    status: {
+                        notify: true,
+                        type: String,
+                        value: ""
+                    },
+                    /**
+                     * a map of deviceInfo objects that describe a USB device that is available on the user's computer.
+                     * This map is generated by ti-service-usb, and can be displayed in a select box drop-down list
+                     * to allow the user to specify the interface that they wish to use to connect to the target with.
+                     *
+                     * @attribute deviceInfoMap
+                     * @type object
+                     * @default undefined
+                     */
+                    deviceInfoMap: {
+                        notify: true,
+                        type: Object,
+                        value: undefined
+                    },
+                    /**
+                     *  The vendorIdFilter is used by the low-level node-hid module to specify which USB-HID ports to
+                     * include in the list of available ports.
+                     * Use * for all devices, empty string for TI devices, or a comma separated list of vendor IDs
+                     *
+                     * @attribute vendorIdFilter
+                     * @type String
+                     * @default "8263,1105,7358"
+                     */
+                    vendorIdFilter: {
+                        type: String,
+                        value: "8263,1105,7358"
+                    },
+                    /**
+                     * isUsbListReady indicates whether the list of USB Devices can be read or not.
+                     * Read this property in response to the usbListReadyChanged event being fired.
+                     *
+                     * @attribute isUsbListReady
+                     * @type boolean
+                     * @default false
+                     */
+                    isUsbListReady: {
+                        notify: true,
+                        type: Boolean,
+                        value: false
+                    }
+                },
+                _backplaneCurrentStateChangedHdlr: function (e) {
+                    gc.console.debug(ServiceName,'backplaneCurrentState changed to ' + e.target.currentState.name);
+                    this.updateStateMachine('backplane_' + e.target.currentState.name);
+                },
+                /** @private */
+                backplaneCurrentStateChangedHdlr: undefined,
+                _backplaneChanged: function (newBackplane, oldBackplane) {
+                    if ((oldBackplane !== undefined) && (oldBackplane !== null) && (oldBackplane.removeEventListener)) {
+                        oldBackplane.removeEventListener("currentStateUpdated", this.backplaneCurrentStateChangedHdlr);
+                        oldBackplane.removeEventListener("connectionStatusChanged", this.backplaneCurrentStateChangedHdlr);
+                        oldBackplane.removeEventListener("btnVisibilityChanged", this.backplaneCurrentStateChangedHdlr);
+                    }
+                    if ((this.backplane !== undefined) && (this.backplane.addEventListener)) {
+                        this.backplane.addEventListener("currentStateUpdated", this.backplaneCurrentStateChangedHdlr);
+                        this.backplane.addEventListener("connectionStatusChanged", this.backplaneCurrentStateChangedHdlr);
+                        this.backplane.addEventListener("btnVisibilityChanged", this.backplaneCurrentStateChangedHdlr);
+                        if (this.backplane.currentState !== undefined) {
+                            gc.console.debug(ServiceName,'backplane event handlers initialized. backplane.currentState.name=' + this.backplane.currentState.name);
+                        }
+                    }
+                    this.fire('backplaneChanged');
+                },
+                /**
+                 * Sets the service's status property
+                 * @private
+                 */
+                setStatus: function (strStatus) {
+                    this.status = strStatus;
+                    this.fire('statusMsgUpdated');
+                },
+                /**
+                 * updateStateMachine accepts user event name strings and looks up the next state associated with this event
+                 * in the events array for the current state.  It then updates the current state to this new state.
+                 *
+                 * @param strEventName - the name of the user event that has been raised
+                 * @result true if the state has been changed, false if it has not
+                 */
+                updateStateMachine: function (strEventName) {
+                    var result = false;
+                    var origStateName = this.currentState.name;
+                    var newStateName = this.currentState.events[strEventName];
+                    if (newStateName) {
+                        gc.console.debug(ServiceName,'updateStateMachine event = ' + strEventName);
+                        if (newStateName !== origStateName) {
+                            this.prevState = this.currentState;
+                            var newIndex = this.stateIndexes[newStateName];
+                            this.currentState = this.states[newIndex];
+                            gc.console.debug(ServiceName,'state change from ' + origStateName + ' to ' + newStateName);
+                        }
+                        result = true;
+                    } else {
+                        gc.console.debug(ServiceName,'OUT OF SEQUENCE updateStateMachine event: ' + strEventName)
+                        gc.console.debug(ServiceName,this.currentState.events.length + ' valid event names for state=' + this.currentState.name + ':');
+                        for (var i = 0; i < this.currentState.events.length; i++) {
+                            gc.console.debug(ServiceName,'event[' + i + ']=' + this.currentState.events[i].name);
+                        }
+                    }
+
+                    return (result);
+                },
+                /**
+                 * _currentStateChanged implements a switch statement for the current state that is executed when the
+                 * current state has just been changed.
+                 */
+                _currentStateChanged: function () {
+                    if (this.initComplete) {
+
+                        gc.console.debug(ServiceName,'onCurrentStateChanged: currentState.name=' + this.currentState.name);
+                        if ((this.currentState.statusString !== undefined) && (this.currentState.statusString.length > 0)) {
+                            this.setStatus(this.currentState.statusString);
+                        }
+                        gc.console.debug(ServiceName,'onCurrentStateChanged: status=' + this.status);
+                        this.prevState = this.currentState;
+                        switch (this.currentState.name) {
+                            case 'disconnected':
+                                this.isUsbListReady = false;
+                                this.closeUsbDevice();
+                                this.fire('usbListReadyChanged');
+                                break;
+                            case 'backplaneReady':
+                                if ((this.backplane) && (this.backplane.agent)) {
+                                    this.updateStateMachine('gotoNextState');
+                                } else {
+                                    gc.console.warning(ServiceName,'backplaneReady but backplane.agent is not defined!');
+                                }
+                                break;
+                            case 'findingDeviceInfoList':
+                                this.isReplugNoticeVisible = false;
+                                this.setStatus('Scanning for usb devices...');
+                                this.listDevices();
+                                break;
+                            case 'usbDeviceListReady':
+                                this.isUsbListReady = true;
+                                this.fire('usbListReadyChanged');
+                                this.fire('deviceInfoMapReady');
+                                break;
+                            case 'disconnect':
+                                this.isUsbListReady = false;
+                                this.updateStateMachine('disconnectComplete');
+                                break;
+
+                        }
+                        this.fire('currentStateUpdated');
+                    }
+                },
+                /** @private */
+                _deviceListListener: function (eventObj) {
+                    var _self = this;
+                    gc.console.debug(ServiceName,'deviceListListener: Received event');
+                    this.async(function () {
+                        this.listDevices();
+                    }.bind(this));
+                },
+                /** @private */
+                deviceListListener: undefined,
+                /**
+                 * Open a usb device
+                 *
+                 * @param deviceKey - key for the device to be opened (from the device list output)
+                 * returns a promise that passes in a deviceInfo object for the opened device
+                 */
+                openUsbDevice: function (deviceInfoKey) {
+                    if (deviceInfoKey) {
+                        return this.usbModule.open(deviceInfoKey).then(function (deviceInfo) {
+                            this.fire('usbDeviceOpened', deviceInfoKey);
+                            return deviceInfo;
+                        }.bind(this));
+                    } else {
+                        return Q.defer().reject("No device key specified.");
+                    }
+                },
+                /**
+                 * close a usb device
+                 *
+                 * @param deviceKey - key for the device to be closed (from the device list output)
+                 * returns a promise that passes in a deviceInfo object for the closed device
+                 */
+                closeUsbDevice: function (deviceInfoKey) {
+                    if (deviceInfoKey) {
+                        return this.usbModule.close(deviceInfoKey).then(function (deviceInfo) {
+                            this.fire('usbDeviceClosed', deviceInfoKey);
+                            return deviceInfo;
+                        }.bind(this))
+                    } else {
+                        return Q.defer().reject("No device key specified.");
+                    }
+                },
+                /**
+                 * claims the specified interface of the opened device
+                 * @param deviceInfoKey - unique identifier for the device (deviceInfo.key for that device)
+                 * @param interfaceIndex - 0-based index of the interface to claim
+                 * @param startPolling - set to true to start polling the interface for returned values
+                 * @oaram numBufsToConcat - optional, set to > 1 to improve data throughput
+                 * @returns a promise
+                 */
+                claimInterface: function (deviceInfoKey, interfaceIndex, startPolling, numBufsToConcat) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) return Q.defer().reject("No USB module");
+                        return usbModule.claimInterface(deviceInfoKey, interfaceIndex, startPolling, numBufsToConcat);
+                    });
+                },
+                /**
+                 * releases the specified interface of the opened device
+                 * @param deviceInfoKey - unique identifier for the device (deviceInfo.key for that device)
+                 * @param interfaceIndex - 0-based index of the interface to claim
+                 * @returns a promise
+                 */
+                releaseInterface: function (deviceInfoKey, interfaceIndex) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) return Q.defer().reject("No USB module");
+                        return usbModule.releaseInterface(deviceInfoKey, interfaceIndex);
+                    });
+                },
+                _getEventName: function (eventPrefix, deviceInfoKey, intfIndex) {
+                    return eventPrefix + "." + deviceInfoKey + "." + intfIndex;
+                },
+                /**
+                 * claims the specified interface of the opened device
+                 * @param deviceInfoKey - unique identifier for the device (deviceInfo.key for that device)
+                 * @param interfaceIndex - 0-based index of the interface to send the command to
+                 * @param cmd - a string containing the command to send to the outEndpoint of the specified interface
+                 * @param timeoutInMs - reject the promise if a response from the target is not received in the specified time.
+                 *   set to 0 or -1 if no response is expected.
+                 * @param pktHdlrCb - optional callback function to handle the response packet(s).  If undefined or null,
+                 *   the promise will return with the first received packet. The pktHdlrCb accepts one parameter (the rx_data
+                 *   packet) and returns immediately with an object {errMsg: string, result: {data: Buffer}}
+                 *    - if errMsg is defined and not null, the command promise is rejected
+                 *    - if result is not null, the command promise is resolved
+                 *    - otherwise the command will continue to wait for more packets.
+                 *
+                 * @returns a promise that resolves to the response to the sendCmd: {data: Buffer}
+                 * @public
+                 */
+                sendCmd: function (deviceInfoKey, interfaceIndex, cmd, timeoutInMs, pktHdlrCb) {
+                    var hTimeout = null;
+                    var rxErrorHdlr = null;
+                    var rxDataHdlr = null;
+                    var rxDataEventName = this._getEventName("rx_data", deviceInfoKey, interfaceIndex);
+                    var rxErrorEventName = this._getEventName("rx_error", deviceInfoKey, interfaceIndex);
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return Q.promise(function (resolve, reject) {
+                            if (timeoutInMs > 0) {
+                                rxErrorHdlr = function (error) {
+                                    reject(error);
+                                };
+                                rxDataHdlr = function (rx_data) {
+                                    var result = null;
+                                    if (hTimeout) {
+                                        window.clearTimeout(hTimeout);
+                                        hTimeout = null;
+                                    }
+                                    if (pktHdlrCb) {
+                                        var retObj = pktHdlrCb(rx_data);
+                                        if (retObj.errMsg) {
+                                            reject(retObj.errMsg);
+                                        } else {
+                                            result = retObj.result;
+                                        }
+                                    } else {
+                                        result = rx_data;
+                                    }
+                                    if (result) {
+                                        resolve(result);
+                                    }
+                                };
+                                usbModule.addListener(rxErrorEventName, rxErrorHdlr);
+                                usbModule.addListener(rxDataEventName, rxDataHdlr);
+                            }
+                            usbModule.sendCmd(deviceInfoKey, interfaceIndex, cmd).then(function () {
+                                if (timeoutInMs > 0) {
+                                    hTimeout = window.setTimeout(function () {
+                                        hTimeout = null;
+                                        reject("Timeout waiting for response from cmd " + cmd);
+                                    }, timeoutInMs)
+                                } else {
+                                    // timeout values of 0 or less are used to indicate that no response is expected
+                                    resolve(null);
+                                }
+                            }).fail(reject);
+                        }).finally(function () {
+                            if (rxErrorHdlr) {
+                                usbModule.removeListener(rxErrorEventName, rxErrorHdlr);
+                            }
+                            if (rxDataHdlr) {
+                                usbModule.removeListener(rxDataEventName, rxDataHdlr);
+                            }
+                            if (hTimeout) {
+                                window.clearTimeout(hTimeout);
+                                hTimeout = null;
+                            }
+                        });
+                    })
+                },
+                /**
+                 * addListener - adds a listener that will be called when data events are raised
+                 * by the specified usb device interface
+                 * @param deviceInfoKey the key for the usb device that is raising the event
+                 * @param interfaceIndex the index of the interface that is raising the event
+                 * @param rxDataHdlrCb the function that is to be called handle the rxData event
+                 * @param errorHdlrCb the function that is to be called to handle error events
+                 * @returns a promise that resolves when the listeners have been added
+                 * @private
+                 */
+                addListener: function (deviceInfoKey, interfaceIndex, rxDataHdlrCb, errorHdlrCb) {
+                    var rxDataEventName = this._getEventName("rx_data", deviceInfoKey, interfaceIndex);
+                    var rxErrorEventName = this._getEventName("rx_error", deviceInfoKey, interfaceIndex);
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        if (rxDataHdlrCb) {
+                            usbModule.addListener(rxDataEventName, rxDataHdlrCb);
+                        }
+                        if (errorHdlrCb) {
+                            usbModule.addListener(rxErrorEventName, errorHdlrCb);
+                        }
+                        return Q.resolve();
+                    });
+                },
+                /**
+                 * removeListener - removes a listener that was created by calling addListener
+                 * @param deviceInfoKey the key for the usb device that is raising the event
+                 * @param interfaceIndex the index of the interface that is raising the event
+                 * @param rxDataHdlrCb the function that is handling the rxData event
+                 * @param errorHdlrCb the function that is handling error events
+                 * @returns a promise that resolves when the listeners have been removed
+                 * @private
+                 */
+                removeListener: function (deviceInfoKey, interfaceIndex, rxDataHdlrCb, errorHdlrCb) {
+                    var rxDataEventName = this._getEventName("rx_data", deviceInfoKey, interfaceIndex);
+                    var rxErrorEventName = this._getEventName("rx_error", deviceInfoKey, interfaceIndex);
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        if (rxDataHdlrCb) {
+                            usbModule.removeListener(rxDataEventName, rxDataHdlrCb);
+                        }
+                        if (errorHdlrCb) {
+                            usbModule.removeListener(rxErrorEventName, errorHdlrCb);
+                        }
+                    });
+                },
+                /**
+                 * controlTransfer: Perform a synchronous control transfer (libusb_control_transfer)
+                 * @param deviceInfoKey string that uniquely identifies which usb device to use
+                 * @param bmRequestType Bits 0:4 determine recipient, 5:6 determine type, Bit 7 determines data transfer direction
+                 * @param bRequest if bmRequestType[5:6] = b00, is a "Standard Request" enum value (e.g. LIBUSB_REQUEST_GET_STATUS)
+                 * @param wValue value (varies according to request)
+                 * @param wIndex index (Varies according to request, typically used to pass an index or offset)
+                 * @param dataOrLength Buffer (for an outEndpoint) or numBytesToReceive (for an inEndpoint) as per bmRequestType:b7
+                 * @returns promise with data argument
+                 */
+                controlTransfer: function (deviceInfoKey, bmRequestType, bRequest, wValue, wIndex, dataOrLength) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return usbModule.controlTransfer(deviceInfoKey, bmRequestType, bRequest, wValue, wIndex, dataOrLength).then(function (resultObj) {
+                            var result = resultObj;
+                            if (resultObj && resultObj.data) {
+                                result = resultObj.data;
+                            }
+                            return result;
+                        });
+                    });
+                },
+                // helper function - converts uint character array to string
+                _typedArrayToUnicodeString: function (ua) {
+                    var str = Array.prototype.map.call(ua, function (ch) {
+                        return String.fromCharCode(ch);
+                    }).join('');
+                    return str;
+                },
+                /**
+                 * getStringDescriptor: returns one of the string descriptors for the device.
+                 * @param stringIndex index of the string (deviceDescriptor.iManufacturer, .iProduct or .iSerialNumber)
+                 * @param maxStringLengthArg max. number of characters for the string (if not defined, set to 64)
+                 * @returns promise with string descriptor
+                 */
+                getStringDescriptor: function (deviceInfoKey, stringIndex, maxStringLengthArg) {
+                    const IN_STANDARD_DEVICE = 128;
+                    const GET_DESCRIPTOR = 6;
+                    const STRING_DESCRIPTOR_TYPE = 3;
+                    var maxStringLength = 64;
+                    if (maxStringLengthArg) {
+                        maxStringLength = +maxStringLengthArg;
+                    }
+                    if (stringIndex === 0) {
+                        return Q.reject("stringIndex === 0 is not supported.");
+                    }
+                    var wValue = STRING_DESCRIPTOR_TYPE << 8 | stringIndex & 0x0FF;
+                    var _self = this;
+                    return this.controlTransfer(deviceInfoKey, IN_STANDARD_DEVICE, GET_DESCRIPTOR, wValue, 0, maxStringLength).then(function (result) {
+                        return _self._typedArrayToUnicodeString(result);
+                    });
+                },
+                /**
+                 * reset: resets the usb device
+                 * @param deviceInfoKey string that uniquely identifies which usb device to use
+                 * @returns promise
+                 */
+                resetUsbDevice: function (deviceInfoKey) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return usbModule.reset(deviceInfoKey);
+                    });
+                },
+                /**
+                 * writeData: writes data to usb device interface out endpoint
+                 * @param deviceInfoKey string that uniquely identifies which usb device to use
+                 * @param intfIndexArg interface index specifying which interface to use
+                 * @param dataBuffer Buffer of data to send to the out endpoint
+                 */
+                writeData: function (deviceInfoKey, intfIndexArg, dataBuffer) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return usbModule.writeData(deviceInfoKey, intfIndexArg, dataBuffer);
+                    });
+                },
+                /**
+                 * readData: reads data from usb device interface in endpoint
+                 * @param deviceInfoKey string that uniquely identifies which usb device to use
+                 * @param intfIndexArg interface index specifying which interface to use
+                 * @param numBytesToRead number of bytes to read from the in endpoint
+                 * @returns promise with data argument containing data that was read
+                 */
+                readData: function (deviceInfoKey, intfIndexArg, numBytesToRead) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return usbModule.readData(deviceInfoKey, intfIndexArg, numBytesToRead);
+                    });
+                },
+                /**
+                 * claims the specified interface of the opened device
+                 * @param deviceInfoKey - unique identifier for the device (deviceInfo.key for that device)
+                 * @param interfaceIndex - 0-based index of the interface to send the command to
+                 * @param cmd - a string containing the command to send to the outEndpoint of the specified interface
+                 * @param pktHdlrCb - optional callback function to handle the response packet(s).  If undefined or null,
+                 *   the promise will return with the first received packet. The pktHdlrCb accepts one parameter (the rx_data
+                 *   packet) and returns immediately with an object {errMsg: string, result: {data: Buffer}}
+                 *    - if errMsg is defined and not null, the command promise is rejected
+                 *    - if result is not null, the command promise is resolved
+                 *    - otherwise the command will continue to wait for more packets.
+                 * @returns a promise that resolves to the response to the sendCmd: {data: Buffer}
+                 * @public
+                 */
+                uploadTestPackets: function (numPkts, pktSizeInBytes, pktHdlrCb) {
+                    var rxDataHdlr = null;
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return Q.promise(function (resolve, reject) {
+                            rxDataHdlr = function (rx_data) {
+                                var result = null;
+                                if (pktHdlrCb) {
+                                    var retObj = pktHdlrCb(rx_data);
+                                    if (retObj.errMsg) {
+                                        reject(retObj.errMsg);
+                                    } else {
+                                        result = retObj.result;
+                                    }
+                                } else {
+                                    result = rx_data;
+                                }
+                                if (result) {
+                                    resolve(result);
+                                }
+                            };
+                            usbModule.addListener("rx_test_data", rxDataHdlr);
+                            usbModule.uploadTestPackets(numPkts, pktSizeInBytes).fail(reject);
+                        }).finally(function () {
+                            if (rxDataHdlr) {
+                                usbModule.removeListener("rx_test_data", rxDataHdlr);
+                            }
+                        });
+                    });
+                },
+                /**
+                 * call getUsbModule to get a reference to the TICloudAgent's USB module and
+                 * to add listeners to the module's attach and detach events.
+                 * @private
+                 */
+                getUsbModule: function (usbModule, targetListHdlr) {
+                    return Q.promise(function (resolve, reject) {
+                        if (usbModule) {
+                            return resolve(usbModule);
+                        } else {
+                            var backplane = gc.services['ti-core-backplane'];
+                            var agent = backplane.agent;
+                            if ((agent === undefined) || (agent === null)) {
+                                return reject('Failed to get agent.');
+                            }
+                            return agent.getSubModule("USB").then(function (usb1) {
+                                usbModule = usb1;
+                                try {
+                                    usbModule.addListener("attach", targetListHdlr);
+                                    usbModule.addListener("detach", targetListHdlr);
+                                    gc.console.debug(ServiceName,'agent.getSubModule(USB) call successful.');
+                                    resolve(usbModule);
+                                }
+                                catch (ex) {
+                                    var msg = "Failed to add listeners to usbModule. ex=" + ex;
+                                    gc.console.error(ServiceName,msg);
+                                    reject(msg);
+                                }
+                            });
+                        }
+                    });
+                },
+                /**
+                 * call freeUsbModule to release the module returned by getUsbModule.
+                 * Removes all listeners from the usbModule
+                 */
+                freeUsbModule: function (usbModule, targetListHdlr) {
+                    if (this.usbModule) {
+                        this.usbModule.removeListener("attach", targetListHdlr);
+                        this.usbModule.removeListener("detach", targetListHdlr);
+                        this.usbModule = null;
+                    }
+                },
+                /**
+                 * returns the deviceInfo for the usb device with the specified key
+                 * @param key
+                 * @returns {*}
+                 */
+                getUsbDeviceInfo: function (key) {
+                    var result = null;
+                    if (this.deviceInfoMap.has(key)) {
+                        result = this.deviceInfoMap.get(key);
+                    }
+                    return result;
+                },
+                /**
+                 * returns a list of USB devices that have a vendor ID that matches the service's vendorIdFilter,
+                 * or the specified vendorIdFilterOverride parameter if defined
+                 * @param vendorIdFilterOverride - optional string that specifies which USB-HID ports to
+                 *   include in the list of available ports returned by the API.
+                 *   Use * for all devices, empty string for TI devices, or a comma separated list of vendor IDs
+                 *   If not specified, the service's vendorIdFilter is used instead.
+                 * @returns promise that resolves to the map of USB devices found.  If vendorIdFilterOverride is not
+                 *  defined, the service's deviceInfoMap property is updated with the new list of devices
+                 */
+                listDevices: function (vendorIdFilterOverride) {
+                    var _self = this;
+                    var devices;
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        _self.usbModule = usbModule;
+                        gc.console.debug(ServiceName,'about to call usbModule.list');
+                        var filter = (vendorIdFilterOverride !== undefined) ? vendorIdFilterOverride : _self.vendorIdFilter;
+                        return usbModule.list(filter).then(function (retObj) {
+                            devices = retObj.deviceInfoList;
+                            var devMap = (vendorIdFilterOverride !== undefined) ? new Map() : _self.deviceInfoMap;
+                            devMap.clear();
+                            for (var i = 0; i < devices.length; i++) {
+                                devMap.set(devices[i].key, devices[i]);
+                            }
+                            gc.console.info(ServiceName,'usbModule.list returned ' + devices.length + ' devices.');
+                            if (vendorIdFilterOverride === undefined) {
+                                _self.wasUsbDeviceFound = ((devices) && (devices.length > 0));
+                                _self.updateStateMachine('usbDeviceListUpdated');
+                                _self.async(function(){
+                                    _self.fire('usbDeviceListUpdated');
+                                }.bind(_self),1);
+                            }
+                            return devMap;
+                        }).fail(function (err) {
+                            var error = (err && err.message) ? err : new Error(err);
+                            gc.console.error(ServiceName,'listDevices failed: error.message=', error.message);
+                            _self.async(function(){
+                                _self.fire('usbDeviceListUpdated', error);
+                            }.bind(_self),1);
+                            throw error;
+                        });
+                    });
+                },
+                /**
+                 * returns the descriptors for the specified usb device:
+                 * {
+             *  deviceDescriptor, // device descriptor,
+			 *  configDescriptor, // configuration descriptor,
+			 *  interfaceDescriptors, // array of interface descriptors for all interfaces supported by the device,
+			 *  bulkInterfaceIndexes // array of interface indexes for all interfaces that support bulk-mode
+             * }
+                 * @param key
+                 */
+                getDescriptors: function (key) {
+                    return this.getUsbModule(this.usbModule, this.deviceListListener).then(function (usbModule) {
+                        if (!usbModule) {
+                            return Q.reject("No USB module");
+                        }
+                        return usbModule.getDescriptors(key);
+                    });
+                },
+                created: function () {
+                    this.deviceListListener = this._deviceListListener.bind(this);
+                    this.backplaneCurrentStateChangedHdlr = this._backplaneCurrentStateChangedHdlr.bind(this);
+                },
+                ready: function () {
+                    this.deviceInfoMap = new Map();
+                    this.stateIndexes = {};
+                    for (var i = 0; i < this.states.length; i++) {
+                        this.stateIndexes[this.states[i].name] = i;
+                    }
+                    this.currentState = this.states[0];
+                    this.prevState = this.currentState;
+                },
+                attached: function () {
+                    gc.services = gc.services || {};
+                    gc.services['ti-service-usb'] = this;
+                    this.async(function () {
+                        this.backplane = gc.services['ti-core-backplane'];
+                        this.initComplete = true;
+                    }.bind(this), 1);
+                },
+                detached: function () {
+                    this.freeUsbModule(this.usbModule, this.deviceListListener);
+                    if (gc.services['ti-service-usb'] === this) {
+                        gc.services['ti-service-usb'] = undefined;
+                    }
+                }
+            });
+        }());
+    </script>
+</dom-module>

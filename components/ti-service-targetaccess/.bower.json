@@ -1,0 +1,18 @@
+{
+  "name": "ti-service-targetaccess",
+  "private": true,
+  "dependencies": {
+    "ti-core-backplane": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git",
+    "polymer": "Polymer/polymer#^1.7.0"
+  },
+  "homepage": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git",
+  "_release": "TODO",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "TODO"
+  },
+  "_source": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git",
+  "_target": "master",
+  "_originalSource": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git"
+}

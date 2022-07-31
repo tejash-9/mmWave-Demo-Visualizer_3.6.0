@@ -1,0 +1,26 @@
+{
+    "win32": {
+        "nodePath": "..\\runtime\\TICloudAgentHostApp",
+        "nodeExecutable": "node.exe",
+        "nodeProgram": ".\\ApplicationServer.js",
+        "arguments": [
+            "--browser=../runtime/node-webkit/nw.exe"
+        ]
+    },
+    "linux": {
+        "nodePath": "../runtime/TICloudAgentHostApp",
+        "nodeExecutable": "node",
+        "nodeProgram": "./ApplicationServer.js",
+        "arguments": [
+            "--browser=../runtime/node-webkit/nw"
+        ]
+    },
+    "mac": {
+        "nodePath": "../runtime/TICloudAgentHostApp",
+        "nodeExecutable": "node",
+        "nodeProgram": "./ApplicationServer.js",
+        "arguments": [
+            "--browser=../runtime/node-webkit/nwjs.app"
+        ]
+    }
+}

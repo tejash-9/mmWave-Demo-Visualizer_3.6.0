@@ -1,0 +1,600 @@
+<!--
+    Copyright (c) 2014-2021, Texas Instruments Incorporated
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+    *   Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+    *   Neither the name of Texas Instruments Incorporated nor the names of
+    its contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+    CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+    EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+    PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+    OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+    OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+    EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../ti-widget-common/ti-widget-dialog.html">
+<link rel="import" href="../ti-widget-common/ti-widget-image.html">
+<link rel="import" href="../ti-widget-common/ti-widget-label.html">
+<link rel="import" href="../ti-widget-common/ti-widget-panel.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../iron-icon/iron-icon.html">
+<link rel="import" href="../ti-core-backplane/ti-core-backplane.html">
+<link rel="import" href="ti-service-serialio.html">
+<link rel="import" href="../ti-widget-common/ti-widget-droplist.html">
+<link rel="import" href="../ti-widget-common/ti-widget-textbox.html">
+<link rel="import" href="../../components/paper-spinner/paper-spinner-lite.html">
+<!--
+`ti-service-serialio-dialog`
+
+Paper-Dialog that provide selectors for Serial Port and Baud Rate.  When the port is changed, the
+component will notify the ti-service-serialio widget of the change by calling its onSerialPortChangedByUser function,
+which will in turn fire a serialportchangedbyuser event.
+
+Example:
+
+    <ti-service-serialio-dialog></ti-service-serialio-dialog>
+
+@group TI Core
+@element ti-service-serialio-dialog
+@homepage ../ti-guicomposer-helpindex/demo.html
+-->
+<dom-module id='ti-service-serialio-dialog'  >
+
+	<template>
+		<style>
+			td {
+				width:1px;
+				white-space: nowrap;
+				padding: 5px;
+			}
+			.col1 {
+				text-align: right;
+			}
+			.col2 {
+				min-width: 110px;
+			}
+			th {
+				text-align: center;
+				padding: 5px;
+			}
+			#portInfo {
+				padding-top:20px;
+			}
+			.busyIndicator {
+            	height: 32px;
+            	width: 32px;
+            	overflow: hidden;
+            	margin-left: 5px;
+            	left: calc(50% - 32px);
+            	top: calc(50% - 32px);
+            	position: absolute;
+            }
+            .busyIndicator /deep/ * {
+            	overflow: hidden;
+            }
+            *[hide] {
+            	visibility: hidden;
+            }
+			
+		</style>
+
+		<ti-widget-dialog id="dialog" heading="{{dialogTitle}}"  is-modal="true" with-backdrop="true" transition="paper-dialog-transition" no-enter-key-handling class="fit" style="text-align:left;">
+			<div id="portInfo" >
+               	<paper-spinner-lite class="busyIndicator" active title="Loading metadata..." hidden="[[!showBusy]]"></paper-spinner-lite>
+				<table hide$="[[showBusy]]">
+					<template is="dom-if" if="{{multipleUarts}}">
+						<tr>
+							<th></th>
+							<template id="tableHeader" is="dom-repeat" items="{{uarts}}" as="uart">
+								<th>[[uart.displayName]]</th>
+							</template>
+						</tr>
+					</template>
+					<tr>
+						<td class="col1">Ports:</td>
+						<template id="serialPortList" is="dom-repeat" items="{{uarts}}" as="uart" index-as="uartIndex">
+							<td class="col2"><ti-widget-droplist class="col2" labels="{{uart.comPorts}}" selected-text="{{uart.comName}}"
+                                        on-selected="onSerialPortChange" id$="comPort_[[uartIndex]]"></ti-widget-droplist></td>
+						</template>
+					</tr>
+					<tr hidden$="[[hideBaudRates]]">
+						<td class="col1">Baud Rates:</td>
+						<template id="baudRateList" is="dom-repeat" items="{{uarts}}" as="uart" index-as="uartIndex">
+							<td class="col2">
+								<div style="position:relative;">
+									<ti-widget-droplist class="col2" id$="droplist_[[uartIndex]]" on-selected="baudRateSelectedHdlr"
+														hide$="[[_hideBaudRate(uart, selectionChangeCount)]]"
+														values="{{uart.baudRateValues}}" labels="{{uart.baudRates}}"
+														selected-value="{{_getSelectedValue(uartIndex,uart.baudRate)}}"
+														style="display:block;position:relative"></ti-widget-droplist>
+									<label style="position:absolute; z-index:-1; left:0; right:0; top:0; bottom:0; vertical-align:middle">N/A</label>
+								</div>
+								<div style$="{{_getCustomBaudRateStyle(uartIndex, uart.hideCustomBaudRate)}}">
+									<ti-widget-textbox id$="textbox_[[uartIndex]]" title="Custom baud rate (integer values only)"
+													   value="{{uart.customBaudRate}}"  intermediate-changes increment="1"
+													   on-changed="clearWarning"
+													   max-value="1000000000" class="col2"></ti-widget-textbox>
+								</div>
+							</td>
+						</template>
+					</tr>
+				</table>
+			</div>
+			<p>&nbsp;</p>
+			<div align="center">
+				<iron-icon id="warningIcon" icon="info" style="display:none;color:darkorange" ></iron-icon>
+				<ti-widget-label id="statusLabel" style="color:black;" wrap label=""></ti-widget-label>
+			</div>
+			<div class="actionBar">
+				<paper-button id="btnConfigure" on-click="refreshPortsHandler" icon="warningIcon" style="font-style:italic;">Refresh</paper-button>
+				<div style="width: 100%;"></div>
+				<paper-button id="btnOK" on-click="onPortSelectedHdlr" >Ok</paper-button>
+				<paper-button id="btnClose" on-click="toggle" style="float:right">Cancel</paper-button>
+			</div>
+		</ti-widget-dialog>
+	</template>
+
+
+	<!-- ------------------------------------------------------------------------------------- -->
+	<script>
+
+        Polymer ({
+            is: 'ti-service-serialio-dialog',
+            statusLabel: undefined,
+            warningIcon: undefined,
+            _myTimeout: undefined,
+            activeSerialPort: undefined,
+            hostAttributes: {
+            },
+
+            properties: {
+                /**
+                 * the title displayed at the top of the dialog
+                 *
+                 * @attribute dialogTitle
+                 * @type string
+                 */
+                dialogTitle: {
+                    notify: true,
+                    type: String,
+                    value: "Serial Port Configuration"
+                },
+                uarts: {
+                    notify: true,
+                    type: Array,
+                    value: undefined
+                },
+                multipleUarts: {
+                    notify: true,
+                    type: Boolean,
+                    value: false
+                },
+                selectionChangeCount: {
+                    type: Number,
+                    value: 0
+                }
+            },
+            _isDialogOpen: false,
+            hideCustomBaudRate: true,
+			dropListBaudRate: "",
+			_getSelectedValue: function(uartIndex, baudRate) {
+                var result = +baudRate;
+                var uart = this.uarts[uartIndex];
+                if (uart && uart.baudRateValues.split(";").indexOf("" + baudRate) < 0) {
+                    	this.set('uarts.'+uartIndex+'.hideCustomBaudRate', false);
+                    	this.set('uarts.'+uartIndex+'.customBaudRate', ""+result);
+	                    result = 0;
+				}
+				return result;
+			},
+            _getCustomBaudRateStyle: function(index, hideCustomBaudRate) {
+                var result = "display:none;";
+                if (!hideCustomBaudRate) {
+                    result = "width:100px;padding-top:10px;position:relative;";
+				}
+                return result;
+			},
+            /**
+             * causes the dialog to become visible if it is not displayed, or not displayed if it is visible
+             *
+             * @method toggle
+             */
+            toggle: function() {
+                if (this._myTimeout) {
+                    window.clearTimeout(this._myTimeout);
+                }
+                this._myTimeout = null;
+                var dialog = this.$.dialog;
+                this._isDialogOpen = !this._isDialogOpen;
+                this.clearStatus();
+                if (this._isDialogOpen){
+                    dialog.style.display = "";
+                    this.configureComponents();
+                } else {
+                    dialog.style.display = 'none';
+                    this.unconfigureComponents();
+                }
+                dialog.toggle();
+            },
+            open: function(){
+                if (!this._isDialogOpen) {
+                    this.toggle();
+                }
+                var dialog = this.$.dialog;
+                var rect = dialog.getBoundingClientRect();
+                if (rect.height === 0){
+                    dialog.style.display = "";
+                    gc.console.warning('ti-service-serialio-dialog', "openning serial port dialog, height is 0!");
+                }
+            },
+            close: function() {
+                if (this._isDialogOpen){
+                    this.toggle();
+                }
+            },
+            clearStatus: function(){
+                this.warningIcon.style.display = 'none';
+                this.warningIcon.style.color='blue';
+                this.warningIcon.icon=' ';
+                this.statusLabel.style.color = 'black';
+                this.statusLabel.label = '';
+                this.errorMsgReceived = false;
+                this.$.btnConfigure.disabled = false;
+                this.$.btnOK.disabled = false;
+            },
+			_clearWarning: function(event) {
+                // do not clear errors such as "Not enough USB ports detected."
+              	if (this.warningIcon.icon === "warning") {
+              	    this.clearStatus();
+				}
+			},
+			clearWarning: undefined,
+            _backplane: undefined,
+            _serialIO: undefined,
+            _baudRateSelectedHdlr: function(event) {
+                if (event && event.target && event.target.id) {
+                    var dropList = event.target;
+                    var uartIndex = dropList.id.split("_")[1];
+                    if (dropList && dropList.selectedValue != 0) {
+                        this.set('uarts.'+uartIndex+'.hideCustomBaudRate', true);
+                        this.uarts[uartIndex].baudRate = +dropList.selectedValue;
+                    } else {
+                        this.set('uarts.'+uartIndex+'.hideCustomBaudRate', false);
+					}
+                }
+			},
+			baudRateSelectedHdlr: undefined,
+			refreshPortsHandler: undefined,
+            updatePortSelections: function(rescanPorts) {
+
+                if (this._myTimeout)
+                    return;
+                
+                var serialIoModel = Polymer.dom(this.parentNode).querySelector('ti-transport-usb');
+                var serialIOs = this._serialIO.getAllSerialPortInstances();
+                if ((!serialIoModel) && (!serialIOs.hasOwnProperty(this._serialIO.id))){
+                    this._serialIO.registerSerialPortInstance(this._serialIO.id);
+                    serialIOs = this._serialIO.getAllSerialPortInstances();
+                }
+
+                this.showBusy = true;
+                
+                var previousPorts = this.uarts.map((uart) => ({ comName: uart.comName }));
+                
+                var promises = [];
+                for(var id in serialIOs)
+                {
+                    if (serialIOs.hasOwnProperty(id))
+                    {
+                        var serialIO = serialIOs[id];
+                        if (serialIO)
+                        {
+                            promises.push(serialIO.listSerialPorts(rescanPorts));
+                        }
+                    }
+                }
+                return Q.all(promises).then(this.onSerialPortsListChanged.bind(this, rescanPorts, previousPorts));
+            },
+
+            onSerialPortsListChanged: function(rescanPorts, previousPorts) {
+                var i = 0;
+                var hideBaudRates = true;
+                var serialIOs = this._serialIO.getAllSerialPortInstances();
+                
+                if (this.uarts.length > 0) {
+                    this.splice('uarts', 0, this.uarts.length);
+                }
+                this.clearStatus();
+
+                for(var id in serialIOs)
+                {
+                    if (serialIOs.hasOwnProperty(id))
+                    {
+                        var serialIO = serialIOs[id];
+                        if (serialIO)
+                        {
+                            hideBaudRates = hideBaudRates && serialIO.hid;
+                            
+                            var selectedPort = (rescanPorts && previousPorts[i]) ? previousPorts[i] : serialIO.selectedSerialPort;
+                            var comPort = selectedPort && serialIO.findSerialPortByName(selectedPort.comName);
+                            var uart = {
+                                displayName: (serialIO.description || id) + (serialIO.optional === true ? " (optional)" : ""),
+                                comName: comPort && (comPort.displayName || comPort.comName),
+                                baudRate: serialIO.selectedBaudRate || serialIO.defaultBaudRate || "9600",
+                                serialIO: serialIO,
+								customBaudRate: serialIO.selectedBaudRate || serialIO.defaultBaudRate,
+								hideCustomBaudRate: true,
+                            };
+                            this.push('uarts', uart); // need to push the uart into the array before calling generatePortList,
+                                                      // otherwise the dialog failed to warn the user if there is less port than 
+                                                      // the required number of ports in the app.
+                            this.generatePortList(uart);
+                            i++;
+                        }
+                    }
+                }
+                
+                this._verifyEnoughPorts();
+                
+                this.hideBaudRates = hideBaudRates;
+                this.multipleUarts = this.uarts.length > 1;
+                this.showBusy = false;
+            },
+            configureComponents: function(){
+                this._serialIO = gc && gc.services && gc.services['ti-service-serialio'];
+                if (this._serialIO) {
+
+                  	this.updatePortSelections(false);
+                    this._serialIO.addEventListener("statusMsgUpdated", this.statusChangedHdlr);
+                    this._backplane = this._serialIO.backplane;
+                    if  ((this._backplane !== undefined) && (this._backplane !== null)) {
+                        this._backplane.addEventListener("statusMsgUpdated", this.statusChangedHdlr);
+                    } else {
+                        this._notifyUserCriticalError("Backplane not defined.");
+                    }
+                } else {
+                    this._notifyUserCriticalError("ti-service-serialio not found in document.body.");
+                }
+            },
+            unconfigureComponents: function(){
+                if (this._backplane) {
+                    this._backplane.removeEventListener("statusMsgUpdated", this.statusChangedHdlr);
+                }
+                if (this._serialIO) {
+                    this._serialIO.removeEventListener("statusMsgUpdated", this.statusChangedHdlr);
+                }
+            },
+            _statusChangedHdlr: function(e){
+                var msg = e.currentTarget.status;
+                if (msg.toUpperCase().indexOf("ERROR") >= 0){
+                    this.errorMsgReceived = true;
+                    this.notifyUser("error", "red", msg, "red");
+                }
+            },
+            statusChangedHdlr: undefined,
+            errorMsgReceived: false,
+            _notifyUser: function(iconName,iconColor, msgText, textColor, preventBtnConfigureDisable){
+                var _self = this;
+                // don't display any messages after auto-close sequence initiated
+                if ((this._myTimeout === undefined) || (this._myTimeout === null)) {
+
+                    this.async(function () {
+                        if (_self.statusLabel) {
+                            if ((msgText !== undefined) && (msgText !== null)) {
+                                _self.statusLabel.style.color = textColor;
+                                _self.statusLabel.label = msgText;
+                                _self.statusLabel.style.display = '';
+                            } else {
+                                _self.statusLabel.style.display = 'none';
+                            }
+                            if (iconName) {
+                                _self.warningIcon.style.color = iconColor;
+                                _self.warningIcon.icon = iconName;
+                                _self.warningIcon.style.display = '';
+                            } else {
+                                _self.warningIcon.style.display = 'none';
+                            }
+                            if (!preventBtnConfigureDisable) {
+                            	_self.$.btnConfigure.disabled = iconColor === 'red';
+                            }
+                        }
+
+                    },1);
+                }
+            },
+            notifyUser: undefined,
+            _notifyUserCriticalError: function(msg) {
+                this._notifyUser("error", "red", msg, "red");
+                this.$.btnOK.disabled = true;
+            },
+            numTimesWaiting: 0,
+            created: function() {
+                this.notifyUser = this._notifyUser.bind(this);
+                this.statusChangedHdlr = this._statusChangedHdlr.bind(this);
+                this.baudRateSelectedHdlr = this._baudRateSelectedHdlr.bind(this);
+                this.clearWarning = this._clearWarning.bind(this);
+            },
+            ready: function () {
+                this.refreshPortsHandler = this.updatePortSelections.bind(this, true);
+                this.statusLabel = this.$.statusLabel;
+                this.warningIcon = this.$.warningIcon;
+                this.uarts = this.uarts || [];
+
+                var _self = this;
+                // Workaround to ensure paper dialog is properly position: see https://github.com/Polymer/paper-dialog/issues/44
+                this.$.dialog.addEventListener("core-overlay-open-completed", function (e) {
+                    _self.$.dialog.updateTargetDimensions();
+                });
+            },
+            attached: function(){
+                this.async(function(){
+                    // monitor for case where user hits ESC to close the dialog
+                    this.$.dialog.addEventListener('dismiss',function(event){
+                        this.close();
+                    }.bind(this));
+                }.bind(this),1)
+            },
+            _serialPortList: undefined,
+            _baudRateList: undefined,
+            _serialIO: undefined,
+            _serialIOFound: false,
+
+            generatePortList: function(uart) {
+                var serialIO = uart.serialIO;
+                if (serialIO && serialIO.serialPorts) {
+                    uart.comPorts = '';
+                    for (var i = 0; i < serialIO.serialPorts.length; i++) {
+                        var port = serialIO.serialPorts[i];
+                        uart.comPorts += (port.displayName || port.comName) + ';';
+                    }
+                    uart.baudRates = "";
+                    uart.baudRateValues = "";
+                    if (serialIO.baudRates)
+                    {
+	                    for (i = 0; i < serialIO.baudRates.length; i++) {
+	                        var baudRate = serialIO.baudRates[i];
+	                        uart.baudRates += baudRate.rate + (baudRate.rate == serialIO.defaultBaudRate ? ' (recommended); ' : ';');
+	                        uart.baudRateValues += baudRate.rate + ';';	    
+	                    }
+                        uart.baudRates += "custom;";
+                        uart.baudRateValues += "0;";
+                    }
+                }
+            },
+            _verifyEnoughPorts: function() {
+				var allPorts = {};
+				var totalPortCount = 0;
+				var requiredTransports = 0;
+				var notEnoughPorts;
+            	for(var i = 0; i < this.uarts.length; i++) {
+            	    if (!this.uarts[i].serialIO.optional) {
+            	        requiredTransports++;
+	            	    var ports = this.uarts[i].serialIO.serialPorts;
+	            	    var j = ports.length;
+	            	    if (j > 0) {
+	                	    while(j-- > 0) {
+	    						var port = ports[j];
+	                	        if (!allPorts[port.comName]) {
+	                	            allPorts[port.comName] = true;
+	                	            totalPortCount++;
+	                	        }
+	                	    }
+	            	    } else {
+	            	        notEnoughPorts = true; 
+	            	    }
+            	    }
+            	}    
+                if (notEnoughPorts || requiredTransports > totalPortCount) {
+                    this._notifyUser("error", "red", "Not enough USB ports detected.  Please check your USB connections...", "black", true);
+                }
+            },
+            onPortSelectedHdlr: function(e) {
+                // verify no duplication of ports
+                for(var j = this.uarts.length; j-- > 0; ) {
+                    for(var k = j; k-- > 0; ) {
+                        if (this.uarts[k].comName === this.uarts[j].comName) {
+                            this._notifyUser("error", "red", "Same serial ports used twice.  Please check your port selections.", "red", true);
+                            this._clearVerificationMessageOnNextChange = true;
+                            return;
+                        }
+                    }
+                }
+                // verify no missing port(s)
+                for(var i = this.uarts.length;i -- > 0; ) {
+                    if (!this.uarts[i].serialIO.optional && !this.uarts[i].comName) {
+                        this._notifyUser("error", "red", "Missing a port selection for " + this.uarts[i].displayName + ".", "red", true);
+                        this._clearVerificationMessageOnNextChange = true;
+                        return
+                    }
+                }
+
+                var changed = false;
+                for(var i = this.uarts.length; i-- > 0; )
+                {
+                    var uart = this.uarts[i];
+                    if (!uart.hideCustomBaudRate) {
+                        uart.baudRate = uart.customBaudRate;
+					}
+					// ensure uart.baudRate is numeric and positive
+                    if (isNaN(uart.baudRate)) {
+                        this._notifyUser("warning", "orange", "Please use only numbers to specify the baud rate.", "black");
+                        return;
+					} else {
+                        if (uart.baudRate <= 0) {
+                            this._notifyUser("warning", "orange", "Please use only numbers > 0 to specify the baud rate.", "black");
+                            return;
+						} else if (uart.comName) { // don't change ports that are blank.
+                            if (uart.serialIO.changeSerialPort(uart.serialIO.findSerialPortByName(uart.comName), uart.baudRate)) {
+                                changed = true;
+                            }
+                        } else {
+                            uart.serialIO.forgetRecommendedComPort();
+                        }
+                    }
+                }
+                if (changed) {
+                    this._notifyUser("info", "blue", "Reconfiguring connection to target...", "black");
+                    
+                       // disconnect should already have been initiated.  wait 300ms, before connecting again.
+                    window.setTimeout(function() {
+                        // ensure disconnect completed, before calling connect.
+                        gc.connectionManager.disconnect().then(function() {
+                            gc.connectionManager.connect();
+                        });
+                    }, 300);
+                } else {
+                    gc.connectionManager.connect();
+                } 
+
+                var _self = this;
+                // delay a couple of seconds before automatically closing the dialog
+                // Also helps to avoid 'Access Denied' errors to defer closing and reopening the port
+                this._myTimeout = window.setTimeout(function () {
+                    _self.close();
+                }, 1000);
+            },
+            onSerialPortChange: function(event) {
+                if (event && event.target && event.target.id) {
+	                this.selectionChangeCount++;  // this ensures _hideBaudRate() is called after every selection change to update the hidden state of the buad rate dropdown.
+	                
+	                var index = +event.target.id.split("_")[1];
+	                var comName = this.uarts[index].comName;
+	                if (comName) {
+	                    for(var i = 0; i < this.uarts.length; i++ ) {
+	                        if (index !== i && this.uarts[i].comName === comName) {
+	                            // duplicate selection, so clear it in other transport(s).
+	                            this.set('uarts.' + i + '.comName', '');
+	                        }
+	                    }
+	                }
+	                if (this._clearVerificationMessageOnNextChange) {
+	                    this._clearVerificationMessageOnNextChange = false;
+	                    this.clearStatus();
+	                }
+                }
+            },
+            _hideBaudRate: function(uart, count) {
+                var comPort = uart.serialIO.findSerialPortByName(uart.comName);
+                return (comPort && comPort.__portMode === 'hid') ? true : false;
+            }
+        });
+	</script>
+
+
+</dom-module>

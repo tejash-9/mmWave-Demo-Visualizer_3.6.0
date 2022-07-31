@@ -1,0 +1,19 @@
+{
+  "name": "ti-core-backplane",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Manages communications with TI Cloud Agent via web sockets and configures DSLite debugger in order to interact with supported TI embedded devices.",
+  "authors": [
+    "Texas Instruments"
+  ],
+  "keywords": [
+    "backplane",
+    "cloud",
+    "debugger",
+    "dslite"
+  ],
+  "main": "ti-core-backplane.html",
+  "dependencies": {
+    "polymer": "Polymer/polymer#~1.2.4"
+  }
+}

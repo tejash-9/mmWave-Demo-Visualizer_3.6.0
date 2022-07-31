@@ -1,0 +1,7 @@
+{
+  "name": "ti-widget-markdown",
+  "private": true,
+  "dependencies": {
+    "polymer": "Polymer/polymer#~1.7.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+    "extends": "../.configs/tsconfig.json",
+    "compilerOptions": {
+        "target": "ES2018",
+        "module": "CommonJS",
+        "rootDir": "./src",
+        "outDir": "./",
+        "typeRoots": [
+            "../node_modules/@types"
+        ]
+    },
+    "exclude": [
+        "./node_modules",
+    ]
+}

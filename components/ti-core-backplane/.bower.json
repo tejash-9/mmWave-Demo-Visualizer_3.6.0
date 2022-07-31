@@ -1,0 +1,13 @@
+{
+  "name": "ti-core-backplane",
+  "_release": "1.0.0",
+  "private": true,
+  "description": "Manages communications with TI Cloud Agent via web sockets and configures DSLite debugger in order to interact with supported TI embedded devices.",
+  "dependencies": {
+    "polymer": "Polymer/polymer#~1.7.0"
+  },
+  "main": "ti-core-backplane.html",
+  "_source": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git",
+  "_target": "*",
+  "_originalSource": "git@bitbucket.itg.ti.com/gc/ti-guicomposer-components.git"
+}

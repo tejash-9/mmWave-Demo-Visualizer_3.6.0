@@ -1,0 +1,352 @@
+<!--
+    Copyright (c) 2016, Texas Instruments Incorporated
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+    *   Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+    *   Neither the name of Texas Instruments Incorporated nor the names of
+    its contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+    CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+    EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+    PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+    OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+    OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+    EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../ti-widget-common-behaviors/ti-widget-common-behaviors.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../ti-core-icons/ti-core-icons.html" async>
+<link rel="import" href="../iron-icons/av-icons.html" async>
+<link rel="import" href="../iron-icons/communication-icons.html" async>
+<link rel="import" href="../iron-icons/device-icons.html" async>
+<link rel="import" href="../iron-icons/editor-icons.html" async>
+<link rel="import" href="../iron-icons/hardware-icons.html" async>
+<link rel="import" href="../iron-icons/image-icons.html" async>
+<link rel="import" href="../iron-icons/maps-icons.html" async>
+<link rel="import" href="../iron-icons/notification-icons.html" async>
+<link rel="import" href="../iron-icons/places-icons.html" async>
+<link rel="import" href="../iron-icons/social-icons.html" async>
+<link rel="import" href="../fa-icons/fa-icons.html" defer>
+
+
+<!--
+`ti-widget-icon-button`
+
+Icon Button - a button with an icon that can be pressed.
+
+  To see which icons can be used, select Help / Browse Icons.
+
+Example:
+
+    <ti-widget-icon-button icon="add"></ti-widget-icon-button>
+
+@group TI Core
+@element ti-widget-icon-button
+@demo demo.html
+-->
+<dom-module id="ti-widget-icon-button">
+
+    <template>
+    	<style>
+
+            #paper_icon_button {
+                color: var(--ti-widget-icon-button-color, black);
+                width:100%;
+                height:100%
+			}
+            /* the :host selector allows Web components to style themselves. Rules in the parent page have higher specificity than :host rules defined in the element. That is, outside styles win.
+            This allows users to override your top-level styling from the outside. Also, :host only works in the context of a shadow root, so you can’t use it outside of shadow DOM.*/
+            :host {
+                @apply(--paper-icon-button);
+                display: inline-block;
+            }
+
+    	</style>
+    	<paper-icon-button id="paper_icon_button" icon="[[icon]]" active="{{active}}" pressed="{{_buttonPressed}}" noink="{{noInk}}" toggles  style$="border-radius:{{_getBorderRadius(_buttonPressed)}};"></paper-icon-button>
+    </template>
+    <script>
+		var gc = gc || {};
+		if (window.parent.gc)
+		{
+			// take the designer from the parent iframe, if available.
+			gc.designer = gc.designer || window.parent.gc.designer;
+		}
+		if (window.global && global.document && global.document.gc)
+		{
+			// take the designer from the global node-webkit document if available
+			gc.designer = gc.designer || global.document.gc.designer;
+		}
+
+        Polymer(
+        {
+            is: 'ti-widget-icon-button',
+            
+            behaviors: [TiWidgetBase],
+            properties:
+            {
+                /**
+                 * Read only value that indicates the pressed state of the icon button.
+                 * If true, the button is being held down by the user.
+                 * Use this to bind to javascript that executes everytime the button is pressed.
+                 *
+                 * @attribute pressed
+                 * @type Boolean
+                 */
+                pressed: 
+                {
+                    type: Boolean,
+                    value: false,
+                    notify: true,
+                    observer: "_buttonPressedChanged"
+                },
+                
+                /**
+                 * Sets the active state of this button.  If used, you should set the icon based 
+                 * on the active state so there is some visual indication of state. 
+                 * 
+                 * @attribute active
+                 * @type Boolean
+                 */
+                active: 
+                {
+                    type: Boolean,
+                    value: false,
+                    notify: true
+                },
+                
+                /**
+                 * Provides the name of the icon to display for this button.
+                 *
+                 * @attribute icon
+                 * @type string
+                 */
+                icon: 
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined,
+                    observer: "_iconChanged"
+                },
+                /**
+                 * Set the color of the icon.  The default is determined by the active theme.
+                 *
+                 * @attribute iconColor
+                 * @type string
+                 */
+                iconColor:
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined,
+                    observer: "_iconColorChanged"
+                },
+                /**
+                 * Set the color of the icon when the button is pressed.  The default is to use the iconColor.
+                 *
+                 * @attribute iconColorWhenPressed
+                 * @type string
+                 */
+                iconColorWhenPressed:
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined
+                },
+                /**
+                 * Set the color of the button when the button is pressed.  The default is to use the normal background color style.
+                 *
+                 * @attribute backgroundColorWhenPressed
+                 * @type string
+                 */
+                backgroundColorWhenPressed:
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined
+                },
+                /**
+                 * Provides an optional path to an image file, in lieu of an icon, to be displayed inside the 
+                 * the icon button.
+                 *
+                 * @attribute imagePath
+                 * @type string
+                 */
+                imagePath: 
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined,
+                    observer: "_imagePathChanged"
+                },
+                
+	            /**
+	             * Optinally identifies an action to perform when this menu is clicked.  The action must be
+	             * registered in javascript using the api gc.nav.registerAction(&gt;name&lt;, function() { ...  };);
+	             *
+	             * @attribute action
+	             * @type string   
+	             */
+                action:
+                {
+                    notify: false,
+                    type: String,
+                    value: undefined,
+                    observer: '_actionChanged'
+                },
+                noInk:
+                {
+                    notify: false,
+                    type: Boolean,
+                    value: false
+                }
+            },
+            _buttonPressed: false,
+            _backgroundColorWhenNotPressed: undefined,
+            _iconColorWhenNotPressed: undefined,
+            observers: ['_disabledChanged(disabled)','_buttonPressedChanged(_buttonPressed)'],
+            _getBorderRadius: function(pressed){
+                return window.getComputedStyle(this,null).getPropertyValue('border-radius');
+            },
+            _imagePathChanged: function()
+            {
+                if (this._isReady) 
+                {
+	            	if (this.imagePath)
+	            	{
+	            	    var imgSrc;
+	            	    if (gc.designer && gc.designer.project.folderName)
+	            	    {
+	            	        imgSrc = encodeURI(gc.designer.project.folderName + '/app/' + this.imagePath);
+	            	    }
+	            	    else
+	            	    {
+	            	        imgSrc = encodeURI('app/' + this.imagePath);
+	            	    }
+	            	    this.$.paper_icon_button.src = imgSrc;
+	            	} 
+	            	else 
+	            	{
+	    				this.$.paper_icon_button.src = undefined;        	    
+	            	}
+                }
+            },
+            _iconChanged: function()
+            {
+                this.updateStyles();
+            },
+            _iconColorChanged: function()
+            {
+                this.customStyle['--ti-widget-icon-button-color'] = this.iconColor ? this.iconColor : undefined;
+                this.$.paper_icon_button.color = this.iconColor ? this.iconColor : undefined;
+                this.updateStyles();
+            },
+            _buttonPressedChanged: function(newValue)
+            {
+                this._buttonPressed = newValue;
+                var defaultIconColor = this.iconColor ? this.iconColor : undefined;
+                if (newValue){
+                    if (this.backgroundColorWhenPressed) {
+                        this.$.paper_icon_button.style.backgroundColor = this.backgroundColorWhenPressed;
+                    }
+                    this.$.paper_icon_button.color = this.iconColorWhenPressed ? this.iconColorWhenPressed : defaultIconColor;
+                    this.customStyle['--ti-widget-icon-button-color'] = this.iconColorWhenPressed ? this.iconColorWhenPressed : defaultIconColor;
+                } else {
+                    if (this._backgroundColorWhenNotPressed) {
+                        this.$.paper_icon_button.style.backgroundColor = this._backgroundColorWhenNotPressed;
+                    } else {
+                        this.$.paper_icon_button.style.backgroundColor = 'transparent';
+                    }
+                    this.$.paper_icon_button.color = defaultIconColor;
+                    this.customStyle['--ti-widget-icon-button-color'] = defaultIconColor;
+                }
+                this.updateStyles();
+                this.$.paper_icon_button.updateStyles();
+            },
+            
+	        _actionChanged : function() 
+	        {
+	            var action = this.action;
+	            if (action !== this._lastAction) 
+	            {
+	                if (this._lastAction && this._actionListener)
+	                {
+		                gc.nav.removeStateListener(this._lastAction, this._actionListener);
+	                }
+	                this._lastAction = action;
+	                
+	                if (action)
+	                {
+		                // wait for someone to include nav.js and fire on gc.nav.fireReady; otherwise
+		                // no one added any actions to bind to anyway.
+		                gc.nav = gc.nav || {};
+		            	gc.nav.ready = gc.nav.ready || Q.Promise(function(resolve) { gc.nav.fireReady = resolve; });
+		            	gc.nav.ready.then(this._onNavReady.bind(this));
+	                }
+	            }
+	        },
+
+            _onNavReady: function()
+            {
+                if (!this._actionListener)
+                {
+                    // first time registering
+                    this._actionListener = 
+                    {
+                        onStateChanged: function(enabled)
+		        	    {
+		        	        this._navDisabled = !enabled;
+		        	        this._disabledChanged();
+		        	    }.bind(this)
+                    };
+	                
+	                this.addEventListener("click", function(event) 
+                    {
+	                    if (this.action)
+	                    {
+	                    	gc.nav.onClick(this.action);
+	                        event.stopPropagation();
+	                    }
+                    }.bind(this));
+                }
+	            gc.nav.addStateListener(this.action, this._actionListener);
+            },
+            
+            _disabledChanged: function()
+            {
+                if (this._isReady) 
+                {
+            		this.$.paper_icon_button.disabled = this.disabled || this._navDisabled || false;
+                }
+            },
+
+            ready: function() 
+            {
+                this._isReady = true;
+                this._imagePathChanged();
+                this._disabledChanged();
+                this._iconColorChanged();
+            },
+            attached: function(){
+                this.async(function(){
+                    this._backgroundColorWhenNotPressed = this.$.paper_icon_button.getComputedStyleValue['background-color'];
+                }.bind(this),1);
+            }
+            
+        });
+    </script>
+</dom-module>
