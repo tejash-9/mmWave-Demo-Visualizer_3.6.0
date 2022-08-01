@@ -124,6 +124,26 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     font-size: inherit;
     position: absolute;
   }
+  #ti_widget_button_post_data{
+    top: 35px;
+    position: relative;
+  }
+  #ti_widget_button_stop_rec{
+    top: 35px;
+    left: 100px;
+    position: relative;
+  }
+  #ti_widget_textbox_User_activity{
+    top: 5px;
+    position: absolute;
+    width: 200px;
+  }
+  #ti_widget_textbox_User_timeframe{
+    left: 200px;
+    top: 5px;
+    position:absolute;
+    width: 100px;
+  }
   #ti_widget_toast_common {
     height: 45px;
     position: fixed;
@@ -2002,6 +2022,12 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                         <ti-widget-button label="Save Config to PC" button-type="default" raised visible bindable-trigger="16" id="ti_widget_button_save_config" onclick="onSaveCfg()" elevation="1" animated></ti-widget-button>
                         <ti-widget-button label="Reset Selection" button-type="default" raised visible bindable-trigger="22" id="ti_widget_button_reset_profile" onclick="onResetProfile()" elevation="1" animated></ti-widget-button>
                         <ti-widget-button label="Send Config to mmWave Device" button-type="default" raised visible bindable-trigger="23" id="ti_widget_button_send_command" onclick="onSendCommand()" elevation="1" animated></ti-widget-button>
+                        <form id="input_user_activity">
+                        <ti-widget-textbox text-align="left" font-size="inherit" font-style="normal" font-weight="normal" text-decoration="none" visible tooltip="The data recorded would be based on this user activity " id="ti_widget_textbox_User_activity" class="_TI_ x-scope ti-widget-textbox-0" placeholder="Enter User Activity"></ti-widget-textbox>
+                        <ti-widget-textbox text-align="left" font-size="inherit" font-style="normal" font-weight="normal" text-decoration="none" visible tooltip="Timeframe for data " id="ti_widget_textbox_User_timeframe" class="_TI_ x-scope ti-widget-textbox-0" placeholder="Enter time"></ti-widget-textbox>
+                        <ti-widget-button label="Post Data" button-type="default" raised visible bindable-trigger="47" id="ti_widget_button_post_data" animated elevation="1" onclick="postdatawithbutton()" class="_TI_ x-scope ti-widget-button-0" title></ti-widget-button>
+                        <ti-widget-button label="Stop Rec" button-type="default" raised visible bindable-trigger="47" id="ti_widget_button_stop_rec" animated elevation="1" onclick="stoprecording()" class="_TI_ x-scope ti-widget-button-0" title></ti-widget-button>
+                        </form>
                     </ti-widget-container>
                     <ti-widget-container font-size="inherit" auto-scroll font-style="normal" font-weight="normal" text-align="left" text-decoration="none" visible id="ti_widget_container_base_config">
                         <ti-widget-label label="Frequency Band (GHz)" text-align="left" font-size="inherit" font-style="normal" font-weight="normal" text-decoration="none" visible tooltip="Select between narrow band or wide band" id="ti_widget_label_freq_band"></ti-widget-label>
