@@ -1249,6 +1249,47 @@ var filterDynamicCommandComments = function (lines) {
         }
     }
 };
+var seconds=0;
+var postdatawithbutton = function() {
+    mybuttonstatus = 1;
+    setInterval(function() {
+        timer.innerHTML = seconds++;
+        }, 1000);
+    console.log('Button Pressed');
+}
+var stoprecording = function() {
+    mybuttonstatus=0;
+    seconds=0;
+    console.log('Recording stopped');
+}
+
+if (mybuttonstatus == 1){
+    var timeframe = document.getElementById('ti_widget_textbox_User_timeframe').value;
+    if(seconds<=timeframe)
+    {
+        var reposnsetext = document.getElementById('ti_widget_textbox_User_activity').value;
+        console.log('responsetext', reposnsetext);
+        activityRes = {activity: reposnsetext};
+        ObjRes = {
+            ...ObjRes,
+            ...activityRes
+        };
+        console.log(ObjRes['activity']);
+        async function postdata () {
+        const rawResponse = await fetch('/api/postdata', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(ObjRes)
+        });
+        const content = await rawResponse.json();
+    
+        console.log("posted data");
+        } postdata();
+    }
+}
 
 /* add delim to the cmd lines array and save to profile.cfg file on user's PC */
 var saveProfileToPC = function (cfg) {
